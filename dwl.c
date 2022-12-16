@@ -943,7 +943,15 @@ createmon(struct wl_listener *listener, void *data)
 	 * output (such as DPI, scale factor, manufacturer, etc).
 	 */
 	m->scene_output = wlr_scene_output_create(scene, wlr_output);
-	wlr_output_layout_add_auto(output_layout, wlr_output);
+    if (strstr(wlr_output->name, "eDP-1")) {
+	    wlr_output_layout_add(output_layout, wlr_output, 0, 0);
+    } else if (strstr(wlr_output->name, "DP-2")) {
+	    wlr_output_layout_add(output_layout, wlr_output, 3840, 0);
+    } else if (strstr(wlr_output->name, "HDMI-A-1")) {
+	    wlr_output_layout_add(output_layout, wlr_output, 7680, 0);
+    } else {
+	    wlr_output_layout_add_auto(output_layout, wlr_output);
+    }
 }
 
 void
@@ -1122,6 +1130,16 @@ focusclient(Client *c, int lift)
 	/* Do not focus clients if a layer surface is focused */
 	if (exclusive_focus)
 		return;
+
+    /* Warp cursor to center of client if it is outside */
+    if (c && (cursor->x < c->geom.x ||
+        cursor->x > c->geom.x + c->geom.width ||
+        cursor->y < c->geom.y ||
+        cursor->y > c->geom.y + c->geom.height))
+        wlr_cursor_warp_closest(cursor,
+            NULL,
+            c->geom.x + c->geom.width / 2.0,
+            c->geom.y + c->geom.height / 2.0);
 
 	/* Raise client in stacking order if requested */
 	if (c && lift)
@@ -2416,6 +2434,21 @@ urgent(struct wl_listener *listener, void *data)
 void
 view(const Arg *arg)
 {
+    Monitor *selected = selmon;
+    Monitor *m;
+	wl_list_for_each(m, &mons, link) {
+        if ((arg->ui & TAGMASK) == m->tagset[m->seltags])
+            return;
+        m->seltags ^= 1;
+        if (arg->ui & TAGMASK)
+            m->tagset[m->seltags] = arg->ui & TAGMASK;
+        arrange(m);
+        printstatus();
+    }
+    // Bring focus back to original monitor
+    selmon = selected;
+	focusclient(focustop(selmon), 1);
+#if 0
 	if ((arg->ui & TAGMASK) == selmon->tagset[selmon->seltags])
 		return;
 	selmon->seltags ^= 1; /* toggle sel tagset */
@@ -2424,6 +2457,7 @@ view(const Arg *arg)
 	focusclient(focustop(selmon), 1);
 	arrange(selmon);
 	printstatus();
+#endif
 }
 
 void
