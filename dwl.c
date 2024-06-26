@@ -326,6 +326,7 @@ static void setpsel(struct wl_listener *listener, void *data);
 static void setsel(struct wl_listener *listener, void *data);
 static void setup(void);
 static void spawn(const Arg *arg);
+static void notify_send(const Arg *arg);
 static void startdrag(struct wl_listener *listener, void *data);
 static void tag(const Arg *arg);
 static void tagmon(const Arg *arg);
@@ -2537,6 +2538,57 @@ spawn(const Arg *arg)
 	}
 }
 
+// timestr should be length 5
+void
+get_time(char* timestr)
+{
+  time_t rawtime;
+  struct tm* timeinfo;
+
+  time(&rawtime);
+  timeinfo = localtime(&rawtime);
+
+  sprintf(timestr, "%02d:%02d", timeinfo->tm_hour, timeinfo->tm_min);
+}
+
+void
+notify_send(const Arg *arg)
+{
+    char *exec[] = { "wayherb", NULL, NULL };
+
+    char time[5];
+    uint32_t tags;
+    char workspaces[3*TAGCOUNT];
+    size_t i;
+    int windex = -1;
+
+    Arg spawn_arg;
+    spawn_arg.v = exec;
+    switch (arg->i) {
+        case NotifySendDateTime:
+            get_time(time);
+            exec[1] = time;
+            spawn(&spawn_arg);
+            break;
+        case NotifySendWorkspace:
+		    tags = selmon->tagset[selmon->seltags];
+            for (i = 0; i < TAGCOUNT; i++) {
+                if (tags & (1 << i)) {
+                    if (windex != -1) {
+                        workspaces[3*windex + 1] = ',';
+                        workspaces[3*windex + 2] = ' ';
+                    }
+                    windex++;
+                    workspaces[3*windex] = 48 + i + 1;
+                    workspaces[3*windex + 1] = 0;
+                }
+            }
+            exec[1] = workspaces;
+            spawn(&spawn_arg);
+            break;
+    }
+}
+
 void
 startdrag(struct wl_listener *listener, void *data)
 {
@@ -2575,6 +2627,7 @@ tile(Monitor *m)
 	unsigned int mw, my, ty;
 	int i, n = 0;
 	Client *c;
+    int nmaster;
 
 	wl_list_for_each(c, &clients, link)
 		if (VISIBLEON(c, m) && !c->isfloating && !c->isfullscreen)
@@ -2582,17 +2635,22 @@ tile(Monitor *m)
 	if (n == 0)
 		return;
 
-	if (n > m->nmaster)
-		mw = m->nmaster ? ROUND(m->w.width * m->mfact) : 0;
+    // Hack so windows first split vertically
+    nmaster = m->nmaster;
+    if (n == 2)
+		nmaster = 1;
+
+	if (n > nmaster)
+		mw = nmaster ? m->w.width * m->mfact : 0;
 	else
 		mw = m->w.width;
 	i = my = ty = 0;
 	wl_list_for_each(c, &clients, link) {
 		if (!VISIBLEON(c, m) || c->isfloating || c->isfullscreen)
 			continue;
-		if (i < m->nmaster) {
+		if (i < nmaster) {
 			resize(c, (struct wlr_box){.x = m->w.x, .y = m->w.y + my, .width = mw,
-				.height = (m->w.height - my) / (MIN(n, m->nmaster) - i)}, 0);
+				.height = (m->w.height - my) / (MIN(n, nmaster) - i)}, 0);
 			my += c->geom.height;
 		} else {
 			resize(c, (struct wlr_box){.x = m->w.x + mw, .y = m->w.y + ty,
